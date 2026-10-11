@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CN12KH Trading Journal</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0f172a',
+                        cardDark: '#161f33',
+                        profitBlue: '#3b82f6',
+                        lossRed: '#ef4444'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS for Excel Parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- PapaParse for Google Sheets CSV Parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-[#090d16] text-slate-800 dark:text-slate-100 min-h-screen flex justify-center items-center p-0 sm:p-4 transition-colors duration-300">
+
+    <div id="app-container" class="w-full sm:max-w-[430px] h-screen sm:h-[880px] bg-slate-50 dark:bg-[#0d1322] sm:rounded-[40px] shadow-2xl flex flex-col overflow-hidden relative border-0 sm:border-8 sm:border-slate-800 dark:sm:border-slate-800">
+        
+        <!-- Header -->
+        <div class="px-5 pt-4 pb-3 flex flex-col gap-3 bg-white dark:bg-[#111827] border-b border-slate-200 dark:border-slate-800/80 z-20">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <button onclick="openAccountModal()" class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:scale-105 transition-transform">
+                        <i class="fa-solid fa-chevron-left text-xs"></i>
+                    </button>
+                    <div>
+                        <h1 class="font-bold text-base tracking-tight text-slate-900 dark:text-white" id="current-account-name">CN12KH Trading journal</h1>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1.5" id="current-account-id">
+                            <span id="sync-status-dot" class="w-2 h-2 rounded-full bg-slate-400 inline-block"></span>
+                            <span id="sync-status-text">Local / Unsynced</span>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <!-- Manual Sync Trigger Button -->
+                    <button onclick="syncGoogleSheetsData(true)" title="Fetch Live Data from Google Sheets" class="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white flex items-center justify-center transition">
+                        <i id="sync-refresh-icon" class="fa-solid fa-rotate text-xs"></i>
+                    </button>
+                    <!-- Theme Toggle -->
+                    <button onclick="toggleTheme()" class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+                        <i id="theme-icon" class="fa-solid fa-moon text-sm"></i>
+                    </button>
+                    <!-- Settings -->
+                    <button onclick="switchTab('sync')" class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+                        <i class="fa-solid fa-gear text-sm"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="flex gap-2 overflow-x-auto hide-scrollbar pt-1 pb-1">
+                <button onclick="switchTab('calendar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all bg-blue-600 text-white shadow-lg shadow-blue-600/30" data-tab="calendar">
+                    Calendar
+                </button>
+                <button onclick="switchTab('trades')" class="tab-btn px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700" data-tab="trades">
+                    Trades
+                </button>
+                <button onclick="switchTab('statistics')" class="tab-btn px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700" data-tab="statistics">
+                    Statistics
+                </button>
+                <button onclick="switchTab('sync')" class="tab-btn px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700" data-tab="sync">
+                    Live Sync
+                </button>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-4 sm:p-5 pb-24" id="main-content-area">
+            
+            <!-- Calendar View -->
+            <div id="tab-calendar" class="space-y-4 tab-content">
+                <!-- Month Header & Summary -->
+                <div class="flex items-center justify-between bg-white dark:bg-[#161f33] p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
+                    <div class="flex items-center gap-3">
+                        <div class="flex flex-col">
+                            <div class="flex items-center gap-2">
+                                <h2 class="text-lg font-bold text-slate-900 dark:text-white" id="calendar-month-title">September 2026</h2>
+                                <button onclick="changeMonth(-1)" class="text-xs text-slate-400 hover:text-white px-1"><i class="fa-solid fa-chevron-left"></i></button>
+                                <button onclick="changeMonth(1)" class="text-xs text-slate-400 hover:text-white px-1"><i class="fa-solid fa-chevron-right"></i></button>
+                            </div>
+                            <span class="text-xs text-slate-500 dark:text-slate-400 font-medium" id="trading-days-count">0 Trading days</span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-lg font-bold tracking-tight text-slate-400" id="monthly-total-pnl">$0.00</span>
+                        <p class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Net P&L</p>
+                    </div>
+                </div>
+
+                <!-- Calendar Grid Container -->
+                <div class="bg-white dark:bg-[#161f33] p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
+                    <div class="grid grid-cols-7 gap-1.5 mb-2 text-center text-xs font-semibold text-slate-400">
+                        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                    </div>
+                    <!-- Calendar Days Grid -->
+                    <div id="calendar-days-grid" class="grid grid-cols-7 gap-1.5">
+                        <!-- Populated via JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Google Sheets Live Banner -->
+                <div id="google-sheet-banner" class="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-4 text-white shadow-lg flex items-center justify-between">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-table"></i>
+                            <h3 class="font-bold text-sm">Google Sheets Live Sync</h3>
+                        </div>
+                        <p class="text-xs text-blue-100 mt-0.5">Import Excel or Google Sheet for real-time P&L</p>
+                    </div>
+                    <button onclick="switchTab('sync')" class="bg-white text-blue-700 font-bold px-3.5 py-2 rounded-xl text-xs hover:bg-blue-50 transition shadow">
+                        Connect Link
+                    </button>
+                </div>
+            </div>
+
+            <div id="tab-trades" class="space-y-4 tab-content hidden">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-base font-bold text-slate-900 dark:text-white">Trade Records</h2>
+                    <button onclick="openAddTradeModal()" class="bg-blue-600 text-white text-xs font-semibold px-3 py-2 rounded-xl shadow hover:bg-blue-700 transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus text-[10px]"></i> Manual Entry
+                    </button>
+                </div>
+
+                <!-- Search and Filters -->
+                <div class="flex gap-2">
+                    <div class="relative flex-1">
+                        <i class="fa-solid fa-search absolute left-3.5 top-3 text-xs text-slate-400"></i>
+                        <input type="text" id="trade-search" oninput="filterTrades()" placeholder="Search symbol, setup, date..." class="w-full bg-white dark:bg-[#161f33] border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                    <select id="trade-filter" onchange="filterTrades()" class="bg-white dark:bg-[#161f33] border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none">
+                        <option value="all">All Results</option>
+                        <option value="win">Wins Only</option>
+                        <option value="loss">Losses Only</option>
+                    </select>
+                </div>
+
+                <div id="trades-list-container" class="space-y-2.5">
+                    <!-- Populated via JS -->
+                </div>
+            </div>
+
+            <div id="tab-statistics" class="space-y-4 tab-content hidden">
+                <h2 class="text-base font-bold text-slate-900 dark:text-white">Performance Metrics</h2>
+                
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-white dark:bg-[#161f33] p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                        <p class="text-xs text-slate-400 font-medium">Win Rate</p>
+                        <h3 class="text-xl font-bold text-slate-900 dark:text-white mt-1" id="stat-winrate">0.0%</h3>
+                        <span class="text-[10px] text-slate-400 font-semibold mt-1 inline-block" id="stat-win-count">0 Wins / 0 Losses</span>
+                    </div>
+                    <div class="bg-white dark:bg-[#161f33] p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                        <p class="text-xs text-slate-400 font-medium">Profit Factor</p>
+                        <h3 class="text-xl font-bold text-slate-900 dark:text-white mt-1" id="stat-profit-factor">0.00</h3>
+                        <span class="text-[10px] text-slate-400 font-semibold mt-1 inline-block">Gross Gain / Loss</span>
+                    </div>
+                    <div class="bg-white dark:bg-[#161f33] p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                        <p class="text-xs text-slate-400 font-medium">Total Net P&L</p>
+                        <h3 class="text-xl font-bold text-slate-400 mt-1" id="stat-net-pnl">$0.00</h3>
+                        <span class="text-[10px] text-slate-400 mt-1 inline-block" id="stat-trading-days-summary">0 Trading Days</span>
+                    </div>
+                    <div class="bg-white dark:bg-[#161f33] p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                        <p class="text-xs text-slate-400 font-medium">Total Trades</p>
+                        <h3 class="text-xl font-bold text-slate-900 dark:text-white mt-1" id="stat-total-trades">0</h3>
+                        <span class="text-[10px] text-slate-400 mt-1 inline-block">Recorded Entries</span>
+                    </div>
+                </div>
+
+                <!-- Detailed Metrics -->
+                <div class="bg-white dark:bg-[#161f33] p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Advanced Breakdown</h3>
+                    <div class="flex justify-between items-center text-xs py-1 border-b border-slate-100 dark:border-slate-800">
+                        <span class="text-slate-500">Largest Winning Day</span>
+                        <span class="font-bold text-blue-500" id="stat-largest-win">$0.00</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs py-1 border-b border-slate-100 dark:border-slate-800">
+                        <span class="text-slate-500">Largest Losing Day</span>
+                        <span class="font-bold text-red-500" id="stat-largest-loss">$0.00</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs py-1 border-b border-slate-100 dark:border-slate-800">
+                        <span class="text-slate-500">Average Winning Trade</span>
+                        <span class="font-bold text-slate-800 dark:text-slate-200" id="stat-avg-win">$0.00</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs py-1">
+                        <span class="text-slate-500">Average Losing Trade</span>
+                        <span class="font-bold text-slate-800 dark:text-slate-200" id="stat-avg-loss">$0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-sync" class="space-y-4 tab-content hidden">
+                <!-- Google Sheets CSV URL Sync -->
+                <div class="bg-white dark:bg-[#161f33] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-table"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-sm font-bold text-slate-900 dark:text-white">Google Sheets Live Sync</h2>
+                            <p class="text-xs text-slate-400">Connect published CSV URL for live P&L</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div>
+                            <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Google Sheets Published CSV URL</label>
+                            <div class="relative mt-1">
+                                <input type="url" id="google-sheet-url" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-3 pr-8 py-2.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500 font-mono">
+                                <button onclick="clearGoogleSheetUrl()" class="absolute right-2 top-2.5 text-slate-400 hover:text-slate-200 text-xs"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Auto Refresh Rate</label>
+                                <select id="auto-sync-interval" onchange="updateAutoSyncInterval()" class="w-full mt-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none">
+                                    <option value="0">Disabled (Manual Only)</option>
+                                    <option value="10">Every 10 Seconds</option>
+                                    <option value="30" selected>Every 30 Seconds</option>
+                                    <option value="60">Every 1 Minute</option>
+                                    <option value="300">Every 5 Minutes</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Status</label>
+                                <div class="mt-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-400 flex items-center gap-2">
+                                    <span id="sync-status-indicator" class="w-2 h-2 rounded-full bg-amber-500"></span>
+                                    <span id="sync-status-text-field" class="font-medium text-[11px] truncate">Idle</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-2 pt-1">
+                            <button onclick="saveAndSyncGoogleSheet()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl text-xs transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-1.5">
+                                <i class="fa-solid fa-cloud-arrow-down"></i> Fetch & Connect Sheet
+                            </button>
+                            <button onclick="loadSampleSheetUrl()" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold px-3 py-2.5 rounded-xl text-xs transition">
+                                Demo Link
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Excel File Upload Option -->
+                <div class="bg-white dark:bg-[#161f33] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-file-excel"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-sm font-bold text-slate-900 dark:text-white">Offline Excel File Upload</h2>
+                            <p class="text-xs text-slate-400">Import .xlsx or .csv manually</p>
+                        </div>
+                    </div>
+
+                    <div class="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-5 text-center hover:border-blue-500 transition cursor-pointer relative" onclick="document.getElementById('excel-file-input').click()">
+                        <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" class="hidden" onchange="handleExcelUpload(event)">
+                        <i class="fa-solid fa-cloud-arrow-up text-2xl text-blue-500 mb-1"></i>
+                        <p class="text-xs font-semibold text-slate-700 dark:text-slate-300">Click to upload Excel file</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Supports .xlsx / .csv</p>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button onclick="downloadExcelTemplate()" class="flex-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 py-2 rounded-xl text-xs font-semibold transition">
+                            <i class="fa-solid fa-download mr-1"></i> Download Template
+                        </button>
+                        <button onclick="clearAllData()" class="bg-red-500/10 hover:bg-red-500 hover:text-white text-red-500 font-semibold px-3 py-2 rounded-xl text-xs transition">
+                            <i class="fa-solid fa-trash-can mr-1"></i> Clear Data
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Export for VS Code -->
+                <div class="bg-white dark:bg-[#161f33] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-code"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-bold text-slate-900 dark:text-white">Open in Visual Studio Code</h3>
+                            <p class="text-xs text-slate-400">Download single HTML project file</p>
+                        </div>
+                    </div>
+                    <button onclick="downloadVSCodeProject()" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-xl text-xs font-semibold transition shadow flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-file-zipper"></i> Export Source Code
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="absolute bottom-0 left-0 right-0 bg-white/90 dark:bg-[#111827]/90 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 py-2 px-6 flex justify-around items-center z-20">
+            <button onclick="switchTab('calendar')" class="nav-icon-btn flex flex-col items-center gap-1 text-blue-600 dark:text-blue-500" data-nav="calendar">
+                <i class="fa-solid fa-calendar-days text-base"></i>
+                <span class="text-[10px] font-medium">Calendar</span>
+            </button>
+            <button onclick="switchTab('trades')" class="nav-icon-btn flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" data-nav="trades">
+                <i class="fa-solid fa-list-check text-base"></i>
+                <span class="text-[10px] font-medium">Trades</span>
+            </button>
+            <button onclick="switchTab('statistics')" class="nav-icon-btn flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" data-nav="statistics">
+                <i class="fa-solid fa-chart-pie text-base"></i>
+                <span class="text-[10px] font-medium">Stats</span>
+            </button>
+            <button onclick="switchTab('sync')" class="nav-icon-btn flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" data-nav="sync">
+                <i class="fa-solid fa-rotate text-base"></i>
+                <span class="text-[10px] font-medium">Live Sync</span>
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Modals -->
+    <div id="account-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white dark:bg-[#161f33] w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-sm text-slate-900 dark:text-white">Switch Trading Account</h3>
+                <button onclick="closeAccountModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="space-y-2" id="account-list-container"></div>
+            <button onclick="addNewAccount()" class="w-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 py-2.5 rounded-xl text-xs font-semibold transition">
+                + Add Account Profile
+            </button>
+        </div>
+    </div>
+
+    <div id="add-trade-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white dark:bg-[#161f33] w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-sm text-slate-900 dark:text-white">Add Trade Entry</h3>
+                <button onclick="closeAddTradeModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="add-trade-form" onsubmit="saveNewTrade(event)" class="space-y-3">
+                <div>
+                    <label class="text-[10px] font-semibold text-slate-400 uppercase">Date</label>
+                    <input type="date" id="new-trade-date" required class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-[10px] font-semibold text-slate-400 uppercase">Symbol</label>
+                        <input type="text" id="new-trade-symbol" placeholder="XAUUSD" required class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-semibold text-slate-400 uppercase">Type</label>
+                        <select id="new-trade-type" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none">
+                            <option value="BUY">BUY / LONG</option>
+                            <option value="SELL">SELL / SHORT</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-[10px] font-semibold text-slate-400 uppercase">P&L ($)</label>
+                        <input type="number" step="any" id="new-trade-pnl" placeholder="350.00" required class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-semibold text-slate-400 uppercase">Setup / Note</label>
+                        <input type="text" id="new-trade-setup" placeholder="Breakout" class="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none">
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl text-xs transition shadow-lg shadow-blue-600/30">
+                    Save Trade
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed top-5 left-1/2 -translate-x-1/2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2.5 rounded-2xl text-xs font-semibold shadow-2xl transition-all duration-300 opacity-0 pointer-events-none z-50 flex items-center gap-2">
+        <i id="toast-icon" class="fa-solid fa-circle-check text-blue-400"></i>
+        <span id="toast-msg">Notification</span>
+    </div>
+
+    <script>
+        let currentYear = 2026;
+        let currentMonth = 8; // September (0-indexed)
+        
+        let accounts = [
+            { id: 'CN12KH-01', name: 'CN12KH Trading journal', type: 'Main Account', active: true },
+            { id: 'CN12KH-02', name: 'CN12KH Secondary', type: 'Evaluation', active: false }
+        ];
+
+        // Database empty by default for September 2026
+        let trades = [];
+
+        let googleSheetUrl = localStorage.getItem('cn12kh_sheet_url') || '';
+        let autoSyncTimer = null;
+        let syncIntervalSeconds = parseInt(localStorage.getItem('cn12kh_sync_interval') || '30');
+
+        window.onload = function() {
+            if (googleSheetUrl) {
+                document.getElementById('google-sheet-url').value = googleSheetUrl;
+                document.getElementById('auto-sync-interval').value = syncIntervalSeconds;
+            }
+
+            renderCalendar();
+            renderTradesList();
+            updateStatistics();
+            updateAccountHeader();
+
+            if (googleSheetUrl) {
+                syncGoogleSheetsData(false);
+                setupAutoSync();
+            }
+        };
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.className = "tab-btn px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700";
+            });
+            const activeBtn = document.querySelector(`[data-tab="${tabId}"]`);
+            if(activeBtn) {
+                activeBtn.className = "tab-btn px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all bg-blue-600 text-white shadow-lg shadow-blue-600/30";
+            }
+
+            document.querySelectorAll('.nav-icon-btn').forEach(btn => {
+                btn.className = "nav-icon-btn flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200";
+            });
+            const activeNav = document.querySelector(`[data-nav="${tabId}"]`);
+            if(activeNav) {
+                activeNav.className = "nav-icon-btn flex flex-col items-center gap-1 text-blue-600 dark:text-blue-500";
+            }
+
+            document.getElementById('main-content-area').scrollTop = 0;
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.getElementById('theme-icon');
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                icon.className = "fa-solid fa-sun text-sm text-amber-500";
+                showToast("Switched to Light Mode");
+            } else {
+                html.classList.add('dark');
+                icon.className = "fa-solid fa-moon text-sm text-amber-400";
+                showToast("Switched to Dark Mode");
+            }
+        }
+
+        function renderCalendar() {
+            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            document.getElementById('calendar-month-title').innerText = `${monthNames[currentMonth]} ${currentYear}`;
+
+            const grid = document.getElementById('calendar-days-grid');
+            grid.innerHTML = '';
+
+            const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
+            const totalDays = new Date(currentYear, currentMonth + 1, 0).getDate();
+            const prevTotalDays = new Date(currentYear, currentMonth, 0).getDate();
+
+            let tradingDaysCount = 0;
+            let monthlyPnL = 0;
+
+            const pnlByDate = {};
+            const countByDate = {};
+            trades.forEach(t => {
+                if(!t.date) return;
+                const parts = t.date.split('-');
+                if(parts.length === 3 && parseInt(parts[0]) === currentYear && parseInt(parts[1]) - 1 === currentMonth) {
+                    const dayNum = parseInt(parts[2]);
+                    pnlByDate[dayNum] = (pnlByDate[dayNum] || 0) + (parseFloat(t.pnl) || 0);
+                    countByDate[dayNum] = (countByDate[dayNum] || 0) + (parseInt(t.tradesCount) || 1);
+                }
+            });
+
+            // Days from previous month
+            for (let i = firstDayIndex; i > 0; i--) {
+                const dayNum = prevTotalDays - i + 1;
+                const cell = document.createElement('div');
+                cell.className = "h-20 bg-slate-100/50 dark:bg-slate-900/30 rounded-xl p-1.5 text-slate-400 dark:text-slate-600 text-xs flex flex-col justify-between opacity-50";
+                cell.innerHTML = `<span class="font-medium">${dayNum}</span>`;
+                grid.appendChild(cell);
+            }
+
+            // Days of current month (Blue for Profit, Red for Loss)
+            for (let day = 1; day <= totalDays; day++) {
+                const cell = document.createElement('div');
+                const hasTrade = pnlByDate[day] !== undefined;
+                
+                if (hasTrade) {
+                    tradingDaysCount++;
+                    monthlyPnL += pnlByDate[day];
+                    const isProfit = pnlByDate[day] >= 0;
+                    
+                    // BLUE FOR PROFIT, RED FOR LOSS
+                    const bgClass = isProfit ? 
+                        'bg-[#10223b] dark:bg-[#0f2442] border border-blue-500/40 text-blue-400' : 
+                        'bg-[#2d1518] dark:bg-[#2c1316] border border-red-500/40 text-red-400';
+                    
+                    cell.className = `h-20 rounded-xl p-1.5 text-xs flex flex-col justify-between shadow-sm cursor-pointer hover:scale-105 transition-transform ${bgClass}`;
+                    cell.innerHTML = `
+                        <div class="flex justify-between items-center font-bold text-slate-200">
+                            <span>${day}</span>
+                        </div>
+                        <div>
+                            <div class="font-bold tracking-tight text-[11px]">${isProfit ? '+' : ''}$${pnlByDate[day].toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}</div>
+                            <div class="text-[9px] text-slate-400 flex items-center gap-1 mt-0.5"><i class="fa-solid fa-chart-bar text-[8px]"></i> ${countByDate[day]} trade${countByDate[day]>1?'s':''}</div>
+                        </div>
+                    `;
+                    cell.onclick = () => filterTradesByDate(`${currentYear}-${String(currentMonth+1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+                } else {
+                    cell.className = "h-20 bg-white dark:bg-[#131c2e] rounded-xl p-1.5 text-slate-700 dark:text-slate-300 text-xs flex flex-col justify-between border border-slate-200/60 dark:border-slate-800/60";
+                    cell.innerHTML = `<span class="font-medium text-slate-400">${day}</span>`;
+                }
+                grid.appendChild(cell);
+            }
+
+            document.getElementById('trading-days-count').innerText = `${tradingDaysCount} Trading days`;
+            const pnlEl = document.getElementById('monthly-total-pnl');
+            if(tradingDaysCount === 0) {
+                pnlEl.innerText = "$0.00";
+                pnlEl.className = "text-lg font-bold tracking-tight text-slate-400";
+            } else {
+                pnlEl.innerText = `${monthlyPnL >= 0 ? '+' : ''}$${monthlyPnL.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                pnlEl.className = `text-lg font-bold tracking-tight ${monthlyPnL >= 0 ? 'text-blue-500' : 'text-red-500'}`;
+            }
+        }
+
+        function changeMonth(direction) {
+            currentMonth += direction;
+            if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+            if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+            renderCalendar();
+        }
+
+        function renderTradesList(filteredTrades = trades) {
+            const container = document.getElementById('trades-list-container');
+            container.innerHTML = '';
+
+            if (filteredTrades.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12 bg-white dark:bg-[#161f33] rounded-2xl border border-slate-200 dark:border-slate-800 p-6">
+                        <i class="fa-solid fa-folder-open text-3xl text-slate-400 mb-2"></i>
+                        <h4 class="font-bold text-xs text-slate-700 dark:text-slate-300">No Trades Recorded</h4>
+                        <p class="text-[11px] text-slate-400 mt-1">Connect your Google Sheet or upload an Excel file to see P&L data.</p>
+                    </div>`;
+                return;
+            }
+
+            filteredTrades.forEach(t => {
+                const isWin = (parseFloat(t.pnl) || 0) >= 0;
+                const card = document.createElement('div');
+                card.className = "bg-white dark:bg-[#161f33] p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between shadow-sm";
+                card.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl ${isWin ? 'bg-blue-500/10 text-blue-500' : 'bg-red-500/10 text-red-500'} flex items-center justify-center font-bold text-xs">
+                            ${(t.type || 'BUY').toUpperCase()}
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h4 class="font-bold text-xs text-slate-900 dark:text-white">${t.symbol || 'SYMBOL'}</h4>
+                                <span class="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-0.5 rounded-md">${t.setup || 'General'}</span>
+                            </div>
+                            <p class="text-[10px] text-slate-400 mt-0.5">${t.date || ''}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="font-bold text-sm ${isWin ? 'text-blue-500' : 'text-red-500'}">
+                            ${isWin ? '+' : ''}$${(parseFloat(t.pnl) || 0).toFixed(2)}
+                        </span>
+                        <div class="text-[10px] text-slate-400">P&L Result</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function filterTrades() {
+            const query = document.getElementById('trade-search').value.toLowerCase();
+            const filter = document.getElementById('trade-filter').value;
+
+            const filtered = trades.filter(t => {
+                const matchesQuery = (t.symbol && t.symbol.toLowerCase().includes(query)) || 
+                                     (t.setup && t.setup.toLowerCase().includes(query)) ||
+                                     (t.date && t.date.includes(query));
+                if (filter === 'win') return matchesQuery && parseFloat(t.pnl) >= 0;
+                if (filter === 'loss') return matchesQuery && parseFloat(t.pnl) < 0;
+                return matchesQuery;
+            });
+            renderTradesList(filtered);
+        }
+
+        function filterTradesByDate(dateStr) {
+            switchTab('trades');
+            document.getElementById('trade-search').value = dateStr;
+            filterTrades();
+        }
+
+        function updateStatistics() {
+            const total = trades.length;
+            if (total === 0) {
+                document.getElementById('stat-winrate').innerText = '0.0%';
+                document.getElementById('stat-win-count').innerText = '0 Wins / 0 Losses';
+                document.getElementById('stat-profit-factor').innerText = '0.00';
+                document.getElementById('stat-net-pnl').innerText = '$0.00';
+                document.getElementById('stat-net-pnl').className = 'text-xl font-bold mt-1 text-slate-400';
+                document.getElementById('stat-total-trades').innerText = '0';
+                document.getElementById('stat-largest-win').innerText = '$0.00';
+                document.getElementById('stat-largest-loss').innerText = '$0.00';
+                document.getElementById('stat-avg-win').innerText = '$0.00';
+                document.getElementById('stat-avg-loss').innerText = '$0.00';
+                return;
+            }
+
+            const wins = trades.filter(t => (parseFloat(t.pnl) || 0) > 0);
+            const losses = trades.filter(t => (parseFloat(t.pnl) || 0) < 0);
+            const winRate = (wins.length / total) * 100;
+
+            const grossProfit = wins.reduce((acc, t) => acc + (parseFloat(t.pnl) || 0), 0);
+            const grossLoss = Math.abs(losses.reduce((acc, t) => acc + (parseFloat(t.pnl) || 0), 0));
+            const profitFactor = grossLoss === 0 ? grossProfit : (grossProfit / grossLoss);
+            const netPnL = grossProfit - grossLoss;
+
+            document.getElementById('stat-winrate').innerText = winRate.toFixed(1) + '%';
+            document.getElementById('stat-win-count').innerText = `${wins.length} Wins / ${losses.length} Losses`;
+            document.getElementById('stat-profit-factor').innerText = profitFactor.toFixed(2);
+            
+            const netEl = document.getElementById('stat-net-pnl');
+            netEl.innerText = `${netPnL >= 0 ? '+' : ''}$${netPnL.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+            netEl.className = `text-xl font-bold mt-1 ${netPnL >= 0 ? 'text-blue-500' : 'text-red-500'}`;
+
+            document.getElementById('stat-total-trades').innerText = total;
+            document.getElementById('stat-largest-win').innerText = `+$${Math.max(...trades.map(t => parseFloat(t.pnl) || 0), 0).toFixed(2)}`;
+            document.getElementById('stat-largest-loss').innerText = `-$${Math.abs(Math.min(...trades.map(t => parseFloat(t.pnl) || 0), 0)).toFixed(2)}`;
+            document.getElementById('stat-avg-win').innerText = wins.length ? `$${(grossProfit / wins.length).toFixed(2)}` : '$0.00';
+            document.getElementById('stat-avg-loss').innerText = losses.length ? `-$${(grossLoss / losses.length).toFixed(2)}` : '$0.00';
+        }
+
+        function saveAndSyncGoogleSheet() {
+            const urlInput = document.getElementById('google-sheet-url').value.trim();
+            if (!urlInput) {
+                showToast("Please enter a valid Google Sheets URL");
+                return;
+            }
+            googleSheetUrl = urlInput;
+            localStorage.setItem('cn12kh_sheet_url', googleSheetUrl);
+            syncGoogleSheetsData(true);
+            setupAutoSync();
+        }
+
+        function syncGoogleSheetsData(showNotification = false) {
+            if (!googleSheetUrl) return;
+
+            updateSyncStatus('Syncing...', 'amber');
+            const refreshIcon = document.getElementById('sync-refresh-icon');
+            if (refreshIcon) refreshIcon.classList.add('fa-spin');
+
+            let fetchUrl = googleSheetUrl;
+            if (googleSheetUrl.includes('google.com/spreadsheets') && !googleSheetUrl.includes('output=csv')) {
+                if (googleSheetUrl.includes('/pubhtml')) {
+                    fetchUrl = googleSheetUrl.replace('/pubhtml', '/pub?output=csv');
+                } else if (!googleSheetUrl.includes('pub?')) {
+                    fetchUrl = googleSheetUrl + '/pub?output=csv';
+                }
+            }
+
+            Papa.parse(fetchUrl, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+
+                    if (results.data && results.data.length > 0) {
+                        const parsedTrades = results.data.map((row, idx) => ({
+                            id: idx + 1,
+                            date: row.Date || row.date || new Date().toISOString().split('T')[0],
+                            symbol: row.Symbol || row.symbol || 'PAIR',
+                            type: (row.Type || row.type || 'BUY').toUpperCase(),
+                            pnl: parseFloat(row.PnL || row.pnl || row.Profit || 0),
+                            tradesCount: parseInt(row.TradesCount || row.tradesCount || row.Trades || 1),
+                            setup: row.Setup || row.setup || 'Google Sheet'
+                        }));
+
+                        trades = parsedTrades;
+                        renderCalendar();
+                        renderTradesList();
+                        updateStatistics();
+                        updateSyncStatus('Live Synced', 'blue');
+
+                        if (showNotification) {
+                            showToast(`Synced ${parsedTrades.length} trades from Google Sheet!`);
+                        }
+                    } else {
+                        updateSyncStatus('No Data', 'red');
+                        if (showNotification) showToast("Connected but no valid trades found.");
+                    }
+                },
+                error: function(err) {
+                    if (refreshIcon) refreshIcon.classList.remove('fa-spin');
+                    updateSyncStatus('Sync Error', 'red');
+                    if (showNotification) showToast("Error connecting to Google Sheets URL.");
+                }
+            });
+        }
+
+        function updateSyncStatus(text, color) {
+            const statusDot = document.getElementById('sync-status-dot');
+            const statusText = document.getElementById('sync-status-text');
+            const indicator = document.getElementById('sync-status-indicator');
+            const textfield = document.getElementById('sync-status-text-field');
+
+            if(statusText) statusText.innerText = text;
+            if(textfield) textfield.innerText = text;
+
+            const colorClasses = {
+                blue: 'bg-blue-500',
+                amber: 'bg-amber-500',
+                red: 'bg-red-500'
+            };
+
+            if(statusDot) statusDot.className = `w-2 h-2 rounded-full inline-block ${colorClasses[color] || 'bg-slate-400'}`;
+            if(indicator) indicator.className = `w-2 h-2 rounded-full ${colorClasses[color] || 'bg-slate-400'}`;
+        }
+
+        function updateAutoSyncInterval() {
+            syncIntervalSeconds = parseInt(document.getElementById('auto-sync-interval').value);
+            localStorage.setItem('cn12kh_sync_interval', syncIntervalSeconds);
+            setupAutoSync();
+            showToast(`Auto-sync set to ${syncIntervalSeconds > 0 ? syncIntervalSeconds + 's' : 'Disabled'}`);
+        }
+
+        function setupAutoSync() {
+            if (autoSyncTimer) clearInterval(autoSyncTimer);
+            if (syncIntervalSeconds > 0 && googleSheetUrl) {
+                autoSyncTimer = setInterval(() => {
+                    syncGoogleSheetsData(false);
+                }, syncIntervalSeconds * 1000);
+            }
+        }
+
+        function clearGoogleSheetUrl() {
+            document.getElementById('google-sheet-url').value = '';
+            googleSheetUrl = '';
+            localStorage.removeItem('cn12kh_sheet_url');
+            if (autoSyncTimer) clearInterval(autoSyncTimer);
+            updateSyncStatus('Disconnected', 'red');
+            showToast("Google Sheets link cleared.");
+        }
+
+        function loadSampleSheetUrl() {
+            const demoUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1samplePlaceholderLinkForCN12KH/pub?output=csv";
+            document.getElementById('google-sheet-url').value = demoUrl;
+            showToast("Demo link filled. Click Fetch & Connect Sheet.");
+        }
+
+        function handleExcelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (json.length > 0) {
+                        const importedTrades = json.map((row, index) => ({
+                            id: trades.length + index + 1,
+                            date: row.Date || row.date || new Date().toISOString().split('T')[0],
+                            symbol: row.Symbol || row.symbol || 'PAIR',
+                            type: (row.Type || row.type || 'BUY').toUpperCase(),
+                            pnl: parseFloat(row.PnL || row.pnl || row.Profit || 0),
+                            tradesCount: parseInt(row.TradesCount || row.tradesCount || 1),
+                            setup: row.Setup || row.setup || 'Excel Import'
+                        }));
+
+                        trades = [...importedTrades, ...trades];
+                        renderCalendar();
+                        renderTradesList();
+                        updateStatistics();
+                        showToast(`Successfully imported ${importedTrades.length} trades!`);
+                        switchTab('calendar');
+                    }
+                } catch(err) {
+                    console.error(err);
+                    showToast("Error parsing Excel file.");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function clearAllData() {
+            trades = [];
+            renderCalendar();
+            renderTradesList();
+            updateStatistics();
+            showToast("All P&L data cleared!");
+        }
+
+        function downloadExcelTemplate() {
+            const wsData = [
+                ["Date", "Symbol", "Type", "PnL", "TradesCount", "Setup"],
+                ["2026-09-07", "EURUSD", "SELL", -107.00, 3, "Trend Reversal"],
+                ["2026-09-08", "GBPUSD", "BUY", 358.00, 4, "Support Bounce"],
+                ["2026-09-09", "XAUUSD", "SELL", -1064.00, 3, "Breakout Fail"],
+                ["2026-09-10", "NAS100", "BUY", -466.00, 1, "Pullback"],
+                ["2026-09-11", "US30", "BUY", 4280.00, 2, "News Momentum"]
+            ];
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            XLSX.utils.book_append_sheet(wb, ws, "CN12KH_Journal");
+            XLSX.writeFile(wb, "CN12KH_Trading_Journal_Template.xlsx");
+            showToast("Excel template downloaded!");
+        }
+
+        function openAccountModal() {
+            const container = document.getElementById('account-list-container');
+            container.innerHTML = '';
+            accounts.forEach(acc => {
+                const item = document.createElement('div');
+                item.className = `p-3 rounded-2xl border cursor-pointer flex justify-between items-center transition ${acc.active ? 'bg-blue-500/10 border-blue-500 text-blue-500' : 'bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'}`;
+                item.innerHTML = `
+                    <div>
+                        <div class="font-bold text-xs">${acc.name}</div>
+                        <div class="text-[10px] font-mono text-slate-400">${acc.type} • #${acc.id}</div>
+                    </div>
+                    ${acc.active ? '<i class="fa-solid fa-check text-xs"></i>' : ''}
+                `;
+                item.onclick = () => selectAccount(acc.id);
+                container.appendChild(item);
+            });
+            document.getElementById('account-modal').classList.remove('hidden');
+        }
+
+        function closeAccountModal() {
+            document.getElementById('account-modal').classList.add('hidden');
+        }
+
+        function selectAccount(id) {
+            accounts.forEach(a => a.active = (a.id === id));
+            updateAccountHeader();
+            closeAccountModal();
+            showToast("Account profile selected");
+        }
+
+        function updateAccountHeader() {
+            const activeAcc = accounts.find(a => a.active) || accounts[0];
+            document.getElementById('current-account-name').innerText = activeAcc.name;
+        }
+
+        function addNewAccount() {
+            const name = prompt("Enter Account Name (e.g., CN12KH Live Account):");
+            if (!name) return;
+            const newAcc = { id: 'CN12KH-' + Math.floor(10 + Math.random() * 90), name: name, type: 'Evaluation', active: false };
+            accounts.push(newAcc);
+            selectAccount(newAcc.id);
+        }
+
+        function openAddTradeModal() {
+            document.getElementById('new-trade-date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('add-trade-modal').classList.remove('hidden');
+        }
+
+        function closeAddTradeModal() {
+            document.getElementById('add-trade-modal').classList.add('hidden');
+        }
+
+        function saveNewTrade(e) {
+            e.preventDefault();
+            const newTrade = {
+                id: trades.length + 1,
+                date: document.getElementById('new-trade-date').value,
+                symbol: document.getElementById('new-trade-symbol').value.toUpperCase(),
+                type: document.getElementById('new-trade-type').value,
+                pnl: parseFloat(document.getElementById('new-trade-pnl').value),
+                tradesCount: 1,
+                setup: document.getElementById('new-trade-setup').value || 'Manual Entry'
+            };
+
+            trades.unshift(newTrade);
+            renderCalendar();
+            renderTradesList();
+            updateStatistics();
+            closeAddTradeModal();
+            showToast("Trade record added!");
+            document.getElementById('add-trade-form').reset();
+        }
+
+        function downloadVSCodeProject() {
+            const codeContent = document.documentElement.outerHTML;
+            const blob = new Blob([codeContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'cn12kh_trading_journal.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("Downloaded complete project file for VS Code!");
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = message;
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            toast.classList.add('opacity-100');
+            setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
